@@ -4,17 +4,28 @@ import pygame
 import math
 import sys
 
+# Configuración de colores
+class colors:
+    black = (0, 0, 0)
+    green = (0, 255, 0)
+    white = (255, 255, 255)
+    red = (255, 0, 0)
+    dark_green = (0, 100, 0)
+    target_colors = [
+        (255, 0, 0),    # Rojo intenso
+        (255, 50, 50),   # Rojo claro 1
+        (255, 100, 100), # Rojo claro 2
+        (255, 150, 150), # Rojo claro 3
+        (255, 200, 200)  # Rojo claro 4
+    ]
+
 # Configuración de Pygame
 pygame.init()
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1000, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Radar Ultrasónico")
-WHITE = (255, 255, 255)
-GREEN = (0, 255, 0)
-RED = (255, 0, 0)
-BLACK = (0, 0, 0)
-BLUE = (0, 0, 255)
-FONT = pygame.font.SysFont('Arial', 16)
+pygame.display.set_caption("Radar de Media Luna (0°-180°)")
+FONT = pygame.font.SysFont('Arial', 20)
+LARGE_FONT = pygame.font.SysFont('Arial', 24, bold=True)
 
 # Configuración del servo
 SERVO_PIN = 18  # GPIO18 (pin 12)
@@ -29,15 +40,24 @@ ECHO = 24  # GPIO24 (pin 18)
 GPIO.setup(TRIG, GPIO.OUT)
 GPIO.setup(ECHO, GPIO.IN)
 
-# Variables para almacenar los datos del radar
-radar_data = []
-max_distance = 200  # Distancia máxima a mostrar en cm
+# Parámetros del radar
+max_distance = 200  # 200 cm máximo
+radar_center = (WIDTH//2, HEIGHT-50)
+radar_radius = min(WIDTH, HEIGHT) - 100
+targets = []
+
+class Target:
+    def __init__(self, angle, distance):
+        self.angle = angle
+        self.distance = distance
+        self.time = time.time()
+        self.color_index = 0
 
 def set_servo_angle(angle):
     duty = angle / 18 + 2
     GPIO.output(SERVO_PIN, True)
     pwm.ChangeDutyCycle(duty)
-    time.sleep(0.2)  # Tiempo reducido para mejor rendimiento
+    time.sleep(0.05)  # Tiempo reducido para mejor rendimiento
     GPIO.output(SERVO_PIN, False)
     pwm.ChangeDutyCycle(0)
 
@@ -48,7 +68,7 @@ def get_distance():
 
     pulse_start = time.time()
     pulse_end = time.time()
-    timeout = time.time() + 0.02  # Timeout reducido a 20ms
+    timeout = time.time() + 0.02  # Timeout de 20ms
 
     while GPIO.input(ECHO) == 0 and pulse_start < timeout:
         pulse_start = time.time()
@@ -58,62 +78,84 @@ def get_distance():
 
     pulse_duration = pulse_end - pulse_start
     distance = pulse_duration * 17150
-    distance = max(0, min(round(distance, 2), max_distance))  # Limitar a max_distance
-    
-    # Filtro simple para eliminar valores erróneos
-    if len(radar_data) > 1 and distance > radar_data[-1][1] * 1.5:
-        distance = radar_data[-1][1]  # Usar el valor anterior si hay un salto grande
-    
-    return distance
+    return max(0, min(round(distance, 2), max_distance))
 
-def draw_radar():
-    center_x, center_y = WIDTH // 2, HEIGHT - 50
-    radius = min(center_x, center_y) - 20
+def draw_radar(angle, distance):
+    # Fondo negro
+    screen.fill(colors.black)
     
-    # Dibujar círculos concéntricos
-    for r in range(radius, 0, -radius//5):
-        pygame.draw.circle(screen, GREEN, (center_x, center_y), r, 1)
-        distance_label = FONT.render(f"{int((r/radius)*max_distance)}cm", True, WHITE)
-        screen.blit(distance_label, (center_x + r - 20, center_y))
+    # Dibujar media luna (semicírculo)
+    pygame.draw.arc(screen, colors.dark_green, 
+                   (radar_center[0]-radar_radius, radar_center[1]-radar_radius, 
+                    radar_radius*2, radar_radius*2),
+                   math.radians(0), math.radians(180), 2)
+    
+    # Dibujar círculos concéntricos (solo la mitad superior)
+    for r in range(radar_radius, 0, -radar_radius//5):
+        pygame.draw.arc(screen, colors.green, 
+                       (radar_center[0]-r, radar_center[1]-r, r*2, r*2),
+                       math.radians(0), math.radians(180), 1)
+        
+        # Etiquetas de distancia
+        if r != radar_radius:
+            dist_text = LARGE_FONT.render(f"{int((r/radar_radius)*max_distance)}", True, colors.green)
+            screen.blit(dist_text, (radar_center[0] - r - 10, radar_center[1] - 20))
+            screen.blit(dist_text, (radar_center[0] + r - 10, radar_center[1] - 20))
     
     # Dibujar líneas de ángulo
-    for angle in range(0, 181, 30):
-        rad_angle = math.radians(angle)
-        end_x = center_x + radius * math.sin(rad_angle)
-        end_y = center_y - radius * math.cos(rad_angle)
-        pygame.draw.line(screen, GREEN, (center_x, center_y), (end_x, end_y), 1)
-        angle_label = FONT.render(f"{angle}°", True, WHITE)
-        screen.blit(angle_label, (end_x, end_y))
+    for deg in range(0, 181, 30):
+        rad = math.radians(deg)
+        end_x = radar_center[0] + radar_radius * math.cos(rad)
+        end_y = radar_center[1] - radar_radius * math.sin(rad)
+        pygame.draw.line(screen, colors.green, radar_center, (end_x, end_y), 1)
+        
+        # Etiquetas de ángulo
+        if deg == 0:
+            text_pos = (radar_center[0] + radar_radius + 10, radar_center[1] - 10)
+        elif deg == 180:
+            text_pos = (radar_center[0] - radar_radius - 30, radar_center[1] - 10)
+        else:
+            text_pos = (end_x - 15, end_y - 10)
+        
+        angle_text = FONT.render(f"{deg}°", True, colors.green)
+        screen.blit(angle_text, text_pos)
     
-    # Dibujar los datos del radar
-    if radar_data:
-        for i in range(1, len(radar_data)):
-            angle_prev, dist_prev = radar_data[i-1]
-            angle_curr, dist_curr = radar_data[i]
-            
-            if dist_prev > 0 and dist_curr > 0:
-                prev_rad = math.radians(angle_prev)
-                curr_rad = math.radians(angle_curr)
-                
-                x1 = center_x + (dist_prev/max_distance)*radius * math.sin(prev_rad)
-                y1 = center_y - (dist_prev/max_distance)*radius * math.cos(prev_rad)
-                
-                x2 = center_x + (dist_curr/max_distance)*radius * math.sin(curr_rad)
-                y2 = center_y - (dist_curr/max_distance)*radius * math.cos(curr_rad)
-                
-                pygame.draw.line(screen, RED, (x1, y1), (x2, y2), 2)
-                pygame.draw.circle(screen, BLUE, (int(x2), int(y2)), 3)
+    # Dibujar línea de barrido
+    rad_angle = math.radians(angle)
+    end_x = radar_center[0] + radar_radius * math.cos(rad_angle)
+    end_y = radar_center[1] - radar_radius * math.sin(rad_angle)
+    pygame.draw.line(screen, colors.green, radar_center, (end_x, end_y), 2)
     
-    # Dibujar información de la última medición
-    if radar_data:
-        last_angle, last_dist = radar_data[-1]
-        info_text = f"Ángulo: {last_angle}° - Distancia: {last_dist} cm"
-        text_surface = FONT.render(info_text, True, WHITE)
-        screen.blit(text_surface, (10, 10))
+    # Panel de información
+    pygame.draw.rect(screen, colors.green, (10, 10, 250, 80), 1)
+    angle_text = LARGE_FONT.render(f"Ángulo: {angle}°", True, colors.white)
+    dist_text = LARGE_FONT.render(f"Distancia: {distance if distance < max_distance else '---'} cm", 
+                                True, colors.white)
+    screen.blit(angle_text, (20, 20))
+    screen.blit(dist_text, (20, 50))
+    
+    # Dibujar objetivos
+    for target in targets[:]:
+        # Calcular posición del objetivo
+        target_rad = math.radians(target.angle)
+        target_dist = (target.distance/max_distance) * radar_radius
+        target_x = radar_center[0] + target_dist * math.cos(target_rad)
+        target_y = radar_center[1] - target_dist * math.sin(target_rad)
+        
+        # Dibujar objetivo
+        pygame.draw.circle(screen, colors.target_colors[target.color_index], 
+                         (int(target_x), int(target_y)), 5)
+        
+        # Actualizar desvanecimiento
+        target.color_index = min(target.color_index + 1, len(colors.target_colors)-1)
+        
+        # Eliminar objetivos muy antiguos
+        if time.time() - target.time > 2.0:
+            targets.remove(target)
+    
+    pygame.display.flip()
 
 try:
-    print("Radar activo. Presiona Ctrl+C o cierra la ventana para detener.")
-    
     clock = pygame.time.Clock()
     running = True
     
@@ -122,46 +164,37 @@ try:
             if event.type == pygame.QUIT:
                 running = False
         
-        # Escaneo de izquierda a derecha
-        for angle in range(0, 181, 5):  # Paso más fino de 5°
+        # Escaneo de izquierda a derecha (0° a 180°)
+        for angle in range(0, 181, 2):
             if not running:
                 break
                 
             set_servo_angle(angle)
-            dist = get_distance()
-            radar_data.append((angle, dist))
+            distance = get_distance()
             
-            # Limitar el número de puntos almacenados
-            if len(radar_data) > 100:
-                radar_data.pop(0)
+            if distance < max_distance:
+                targets.append(Target(angle, distance))
             
-            # Dibujar
-            screen.fill(BLACK)
-            draw_radar()
-            pygame.display.flip()
+            draw_radar(angle, distance)
             clock.tick(30)  # 30 FPS
         
         if not running:
             break
             
-        # Escaneo de derecha a izquierda
-        for angle in range(180, -1, -5):  # Paso más fino de 5°
+        # Escaneo de derecha a izquierda (180° a 0°)
+        for angle in range(180, -1, -2):
             if not running:
                 break
                 
             set_servo_angle(angle)
-            dist = get_distance()
-            radar_data.append((angle, dist))
+            distance = get_distance()
             
-            if len(radar_data) > 100:
-                radar_data.pop(0)
+            if distance < max_distance:
+                targets.append(Target(angle, distance))
             
-            # Dibujar
-            screen.fill(BLACK)
-            draw_radar()
-            pygame.display.flip()
+            draw_radar(angle, distance)
             clock.tick(30)
-    
+
 except KeyboardInterrupt:
     pass
 
@@ -169,5 +202,4 @@ finally:
     pwm.stop()
     GPIO.cleanup()
     pygame.quit()
-    print("\nRadar detenido.")
     sys.exit()
