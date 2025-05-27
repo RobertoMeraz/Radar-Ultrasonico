@@ -49,4 +49,11 @@ Clona el repositorio:
 - pip3 install RPi.GPIO #nota: si no deja usar pip utilizar un entorno virtual.
 
 - python3 radar.py
+---
+
+## 🖼 Vista de la Interfaz en Ejecución
+
+A continuación se muestra una captura de pantalla del radar funcionando en tiempo real:
+
+![Vista de la ejecución del radar](./ejecu_radar.png)
 
