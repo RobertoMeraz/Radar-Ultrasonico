@@ -39,7 +39,7 @@ Este proyecto implementa un sistema de radar utilizando un sensor ultrasónico *
 
 ## Instalación
 
-Clona el repositorio:
+Ejecuta los siguientes comandos:
 
 - git clone https://github.com/RobertoMeraz/Radar-Ultrasonico.git
 - cd Radar-Ultrasonico
