@@ -75,14 +75,17 @@ def get_distance():
     pulse_start = time.time()
     pulse_end = pulse_start
     
+    # Timeout para evitar bucles infinitos
+    timeout_start = time.time()
     while GPIO.input(ECHO) == 0:
         pulse_start = time.time()
-        if pulse_start - pulse_end > 0.1:
+        if time.time() - timeout_start > 0.1:
             return MAX_DISTANCE
-    
+            
+    timeout_start = time.time()
     while GPIO.input(ECHO) == 1:
         pulse_end = time.time()
-        if pulse_end - pulse_start > 0.1:
+        if time.time() - timeout_start > 0.1:
             return MAX_DISTANCE
     
     pulse_duration = pulse_end - pulse_start
@@ -94,15 +97,15 @@ def draw_radar(angle, distance):
     
     # Dibujar semicírculo del radar
     pygame.draw.arc(screen, colors.dark_green, 
-                   (radar_center[0]-radar_radius, radar_center[1]-radar_radius, 
-                    radar_radius*2, radar_radius*2),
-                   math.radians(0), math.radians(180), 2)
+                    (radar_center[0]-radar_radius, radar_center[1]-radar_radius, 
+                     radar_radius*2, radar_radius*2),
+                    math.radians(0), math.radians(180), 2)
     
     # Líneas de distancia (cada 10cm)
     for r in range(radar_radius, 0, -radar_radius//5):
         pygame.draw.arc(screen, colors.green, 
-                       (radar_center[0]-r, radar_center[1]-r, r*2, r*2),
-                       math.radians(0), math.radians(180), 1)
+                        (radar_center[0]-r, radar_center[1]-r, r*2, r*2),
+                        math.radians(0), math.radians(180), 1)
         
         # Etiquetas de distancia
         dist = int((r/radar_radius)*MAX_DISTANCE)
@@ -136,7 +139,7 @@ def draw_radar(angle, distance):
     pygame.draw.rect(screen, colors.green, (10, 10, 250, 80), 1)
     angle_text = LARGE_FONT.render(f"Ángulo: {angle}°", True, colors.white)
     dist_text = LARGE_FONT.render(f"Distancia: {distance if distance < MAX_DISTANCE else '---'} cm", 
-                                True, colors.white)
+                                 True, colors.white)
     screen.blit(angle_text, (20, 20))
     screen.blit(dist_text, (20, 50))
     
@@ -150,7 +153,7 @@ def draw_radar(angle, distance):
         
         # Dibujar punto
         pygame.draw.circle(screen, colors.target_colors[target.color_index], 
-                         (int(target_x), int(target_y)), 6)
+                           (int(target_x), int(target_y)), 6)
         
         # Mostrar distancia
         dist_text = FONT.render(f"{target.distance}cm", True, colors.white)
@@ -160,14 +163,22 @@ def draw_radar(angle, distance):
         # Actualizar desvanecimiento
         target.color_index = min(target.color_index + 1, len(colors.target_colors)-1)
         
-        # Eliminar objetivos antiguos
-        if time.time() - target.time > 1.5:
+        # Eliminar objetivos antiguos (después de 5 segundos)
+        if time.time() - target.time > 5: # <-- CAMBIO AQUÍ: de 1.5 a 5
             targets.remove(target)
     
     pygame.display.flip()
 
 def main():
+    # <-- NUEVA LÍNEA: Declarar la variable del archivo
+    data_file = None 
     try:
+        # <-- NUEVA LÍNEA: Abrir archivo para guardar datos
+        data_file = open("datos_radar.txt", "w")
+        data_file.write("Registro de Detecciones del Radar\n")
+        data_file.write("="*35 + "\n")
+        data_file.write("Timestamp, Ángulo (°), Distancia (cm)\n")
+
         clock = pygame.time.Clock()
         running = True
         current_angle = 0
@@ -203,6 +214,11 @@ def main():
             
             if distance < MAX_DISTANCE:
                 targets.append(Target(current_angle, distance))
+                
+                # <-- NUEVA LÍNEA: Guardar los datos en el archivo
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                log_entry = f"{timestamp}, {current_angle}, {distance}\n"
+                data_file.write(log_entry)
             
             draw_radar(current_angle, distance)
             clock.tick(60)  # 60 FPS
@@ -211,6 +227,11 @@ def main():
         pass
     finally:
         print("\nDeteniendo radar...")
+        # <-- NUEVA LÍNEA: Asegurarse de cerrar el archivo al terminar
+        if data_file:
+            data_file.close()
+            print("Datos guardados en datos_radar.txt")
+        
         pwm.stop()
         GPIO.cleanup()
         pygame.quit()
