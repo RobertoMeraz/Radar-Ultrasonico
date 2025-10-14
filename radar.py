@@ -1,3 +1,33 @@
+¡Por supuesto\! Vamos a ajustar el código para que funcione exactamente como quieres.
+
+Los problemas que mencionas son comunes y fáciles de solucionar:
+
+1.  **El archivo TXT no guarda datos:** Esto sucede porque Python a menudo espera a que se acumule una cierta cantidad de datos (un "buffer") antes de escribirlos físicamente en el archivo. Si el programa se detiene de forma abrupta, esos datos nunca se guardan. La solución es forzar la escritura después de cada nueva línea.
+2.  **Velocidad del servo:** Para que el servo gire más lento, solo necesitamos reducir el valor de la variable que controla cuántos grados se mueve en cada paso.
+
+-----
+
+### \#\# Cambios Realizados
+
+1.  **Solución del Archivo TXT (Línea 232):**
+
+      * Justo después de escribir una línea de datos en el archivo (`data_file.write(log_entry)`), he añadido `data_file.flush()`. Este comando le dice a Python: "No esperes, escribe estos datos en el disco ahora mismo". Esto garantiza que cada detección se guarde al instante.
+
+2.  **Velocidad del Servo (Línea 49):**
+
+      * He cambiado el valor de la variable `scan_speed` de `2` a `1`. Esto hará que el servo se mueva en incrementos de 1 grado por ciclo, reduciendo la velocidad de barrido a la mitad y dándole un movimiento mucho más suave.
+
+3.  **Verificación de Distancia Máxima:**
+
+      * Revisé el código y la lógica para limitar la distancia a **50 cm ya es correcta**. La variable `MAX_DISTANCE = 50` y la función `get_distance()` se aseguran de que cualquier valor por encima de 50 sea ignorado. No se necesita ningún cambio aquí, ¡ya estaba bien implementado\!
+
+-----
+
+### \#\# Código Completo Modificado
+
+Aquí tienes el código con los ajustes. Simplemente copia y pega esto en tu archivo de Python.
+
+```python
 import RPi.GPIO as GPIO
 import time
 import pygame
@@ -46,7 +76,7 @@ LARGE_FONT = pygame.font.SysFont('Arial', 24, bold=True)
 MAX_DISTANCE = 50  # 50 cm máximo
 radar_center = (WIDTH//2, HEIGHT-50)
 radar_radius = min(WIDTH, HEIGHT) - 100
-scan_speed = 2  # Grados por frame (aumentado para mayor velocidad)
+scan_speed = 1  # <-- CAMBIO AQUÍ: Reducido de 2 a 1 para un barrido más lento
 targets = []
 
 class Target:
@@ -164,16 +194,14 @@ def draw_radar(angle, distance):
         target.color_index = min(target.color_index + 1, len(colors.target_colors)-1)
         
         # Eliminar objetivos antiguos (después de 5 segundos)
-        if time.time() - target.time > 5: # <-- CAMBIO AQUÍ: de 1.5 a 5
+        if time.time() - target.time > 5:
             targets.remove(target)
     
     pygame.display.flip()
 
 def main():
-    # <-- NUEVA LÍNEA: Declarar la variable del archivo
     data_file = None 
     try:
-        # <-- NUEVA LÍNEA: Abrir archivo para guardar datos
         data_file = open("datos_radar.txt", "w")
         data_file.write("Registro de Detecciones del Radar\n")
         data_file.write("="*35 + "\n")
@@ -182,9 +210,8 @@ def main():
         clock = pygame.time.Clock()
         running = True
         current_angle = 0
-        direction = 1  # 1 para derecha, -1 para izquierda
+        direction = 1
         
-        # Secuencia de inicialización del servo
         print("Inicializando servo...")
         for angle in [90, 0, 90, 180, 90]:
             set_servo_angle(angle)
@@ -197,10 +224,8 @@ def main():
                 if event.type == pygame.QUIT:
                     running = False
             
-            # Actualizar ángulo
             current_angle += scan_speed * direction
             
-            # Cambiar dirección al llegar a los límites
             if current_angle >= 180:
                 current_angle = 180
                 direction = -1
@@ -208,26 +233,24 @@ def main():
                 current_angle = 0
                 direction = 1
             
-            # Mover servo y medir distancia
             set_servo_angle(current_angle)
             distance = get_distance()
             
             if distance < MAX_DISTANCE:
                 targets.append(Target(current_angle, distance))
                 
-                # <-- NUEVA LÍNEA: Guardar los datos en el archivo
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
                 log_entry = f"{timestamp}, {current_angle}, {distance}\n"
                 data_file.write(log_entry)
+                data_file.flush() # <-- CAMBIO AQUÍ: Forzar escritura al disco
             
             draw_radar(current_angle, distance)
-            clock.tick(60)  # 60 FPS
+            clock.tick(60)
 
     except KeyboardInterrupt:
         pass
     finally:
         print("\nDeteniendo radar...")
-        # <-- NUEVA LÍNEA: Asegurarse de cerrar el archivo al terminar
         if data_file:
             data_file.close()
             print("Datos guardados en datos_radar.txt")
@@ -239,3 +262,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
